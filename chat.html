@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="{{ utilisateur.langue }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malove AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>:root { --accent: {{ utilisateur.couleur }}; }</style>
+</head>
+<body class="page-chat">
+
+<header class="entete">
+    <div class="entete-marque">
+        <svg class="mini-robot" viewBox="0 0 380 380" aria-hidden="true">
+            <circle cx="190" cy="190" r="170" fill="var(--accent)"/>
+            <rect x="118" y="118" width="144" height="128" rx="36" fill="#fff"/>
+            <rect x="140" y="90" width="10" height="34" rx="5" fill="#fff"/>
+            <rect x="230" y="90" width="10" height="34" rx="5" fill="#fff"/>
+            <circle cx="160" cy="178" r="15" fill="var(--accent)"/>
+            <circle cx="220" cy="178" r="15" fill="var(--accent)"/>
+            <path d="M155 218 C 168 235, 212 235, 225 218 C 225 240, 205 252, 190 252 C 175 252, 155 240, 155 218 Z" fill="var(--accent)"/>
+        </svg>
+        <span class="entete-nom">Malove<span class="point">.</span>ai</span>
+    </div>
+
+    <div class="entete-droite">
+        <button class="bouton-icone" id="ouvrir-reglages" aria-label="{{ t.settings }}">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10.6 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 16.11 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 20.43 9v.09A1.65 1.65 0 0 0 21.91 10.6H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </button>
+        <img class="entete-photo" src="{{ utilisateur.photo }}" alt="{{ utilisateur.nom }}" referrerpolicy="no-referrer">
+        <a class="bouton-texte" href="{{ url_for('deconnexion') }}">{{ t.logout }}</a>
+    </div>
+</header>
+
+<nav class="onglets" role="tablist">
+    <button class="onglet actif" data-salon="ia" role="tab" aria-selected="true">{{ t.tab_ia }}</button>
+    <button class="onglet" data-salon="public" role="tab" aria-selected="false">{{ t.tab_public }}</button>
+</nav>
+
+<main class="zone-chat">
+    <div class="messages" id="messages" aria-live="polite"></div>
+
+    <div class="compteur" id="compteur">
+        <span id="restants">{{ restants }}</span> / {{ limite_totale }} {{ t.credits_left }}
+    </div>
+
+    <form class="barre-envoi" id="formulaire">
+        <input
+            id="champ-message"
+            type="text"
+            autocomplete="off"
+            placeholder="{{ t.placeholder_ia }}"
+            maxlength="2000"
+            aria-label="{{ t.placeholder_ia }}">
+        <button type="submit" id="bouton-envoi">{{ t.send }}</button>
+    </form>
+</main>
+
+<!-- Panneau de réglages -->
+<div class="voile" id="voile" hidden></div>
+<aside class="reglages" id="reglages" hidden aria-label="{{ t.settings }}">
+    <h2>{{ t.settings }}</h2>
+
+    <label class="reglage-titre" for="choix-couleur">{{ t.accent }}</label>
+    <div class="palette" id="palette">
+        <button class="pastille" data-couleur="#8b5cf6" style="--p:#8b5cf6" aria-label="Violet"></button>
+        <button class="pastille" data-couleur="#ec4899" style="--p:#ec4899" aria-label="Rose"></button>
+        <button class="pastille" data-couleur="#3b82f6" style="--p:#3b82f6" aria-label="Bleu"></button>
+        <button class="pastille" data-couleur="#10b981" style="--p:#10b981" aria-label="Vert"></button>
+        <button class="pastille" data-couleur="#f59e0b" style="--p:#f59e0b" aria-label="Orange"></button>
+        <button class="pastille" data-couleur="#ef4444" style="--p:#ef4444" aria-label="Rouge"></button>
+    </div>
+    <input type="color" id="choix-couleur" value="{{ utilisateur.couleur }}" aria-label="{{ t.accent }}">
+
+    <label class="reglage-titre" for="choix-langue">{{ t.language }}</label>
+    <select id="choix-langue">
+        <option value="fr" {{ 'selected' if utilisateur.langue == 'fr' }}>Français</option>
+        <option value="en" {{ 'selected' if utilisateur.langue == 'en' }}>English</option>
+    </select>
+</aside>
+
+<script>
+    // Les textes traduits sont passés au JavaScript (aucune donnée sensible ici)
+    window.MALOVE = {
+        textes: {
+            placeholderIa: {{ t.placeholder_ia | tojson }},
+            placeholderPublic: {{ t.placeholder_public | tojson }},
+            videIa: {{ t.empty_ia | tojson }},
+            videPublic: {{ t.empty_public | tojson }},
+            erreur: {{ t.error | tojson }}
+        },
+        moi: {{ utilisateur.id | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+</body>
+</html>
