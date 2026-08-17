@@ -1,18 +1,6 @@
 """
 Site web Malove AI
 ==================
-
-Un site où les gens se connectent avec leur compte Google, discutent avec l'IA,
-et peuvent parler ensemble dans un salon public.
-
-🔒 SÉCURITÉ : la clé API Groq n'est JAMAIS envoyée au navigateur.
-   Le navigateur parle uniquement à CE serveur (/api/chat), et c'est le serveur
-   qui contacte Groq. Si tu ouvres l'inspecteur du navigateur (F12), tu ne verras
-   que des appels vers ton propre site — jamais la clé.
-
-Lancement :
-    pip install -r requirements.txt
-    python app.py
 """
 
 import os
@@ -41,7 +29,6 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 BASE_DE_DONNEES = "malove.db"
-
 ADMIN_EMAIL = "ximopro85@gmail.com"
 
 LIMITE_IA_PAR_HEURE = 20
