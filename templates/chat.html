@@ -83,19 +83,32 @@
         <option value="fr" {{ 'selected' if utilisateur.langue == 'fr' }}>Français</option>
         <option value="en" {{ 'selected' if utilisateur.langue == 'en' }}>English</option>
     </select>
+
+    {% if est_admin %}
+    <label class="reglage-titre" style="margin-top:24px;">{{ t.admin_titre }}</label>
+    <input type="email" id="admin-email" placeholder="{{ t.admin_email_placeholder }}" class="admin-champ">
+    <div class="admin-boutons">
+        <button id="admin-bouton-vip" class="admin-bouton admin-bouton-vip">⭐ {{ t.admin_vip_bouton }}</button>
+        <button id="admin-bouton-ban" class="admin-bouton admin-bouton-ban">🚫 {{ t.admin_ban_bouton }}</button>
+    </div>
+    <p id="admin-message" class="admin-message"></p>
+    {% endif %}
 </aside>
 
 <script>
-    // Les textes traduits sont passés au JavaScript (aucune donnée sensible ici)
     window.MALOVE = {
         textes: {
             placeholderIa: {{ t.placeholder_ia | tojson }},
             placeholderPublic: {{ t.placeholder_public | tojson }},
             videIa: {{ t.empty_ia | tojson }},
             videPublic: {{ t.empty_public | tojson }},
-            erreur: {{ t.error | tojson }}
+            erreur: {{ t.error | tojson }},
+            adminOkVip: {{ t.admin_ok_vip | tojson }},
+            adminOkBan: {{ t.admin_ok_ban | tojson }},
+            adminErreur: {{ t.admin_erreur | tojson }}
         },
-        moi: {{ utilisateur.id | tojson }}
+        moi: {{ utilisateur.id | tojson }},
+        estAdmin: {{ est_admin | tojson }}
     };
 </script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
