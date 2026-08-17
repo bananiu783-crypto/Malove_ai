@@ -1,62 +1,328 @@
-<!DOCTYPE html>
-<html lang="{{ langue }}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Malove AI</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="page-login">
+/* =========================================================
+   Malove AI — JavaScript
+   ========================================================= */
 
-    <main class="login-carte">
-        <!-- Le robot Malove : ses yeux s'allument au survol -->
-        <svg class="login-robot" viewBox="0 0 380 380" role="img" aria-label="Malove AI">
-            <defs>
-                <linearGradient id="fond" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#8b5cf6"/>
-                    <stop offset="100%" stop-color="#ec4899"/>
-                </linearGradient>
-            </defs>
-            <circle cx="190" cy="190" r="170" fill="url(#fond)"/>
-            <rect x="118" y="118" width="144" height="128" rx="36" fill="#ffffff"/>
-            <rect x="140" y="90" width="10" height="34" rx="5" fill="#ffffff"/>
-            <rect x="230" y="90" width="10" height="34" rx="5" fill="#ffffff"/>
-            <circle cx="145" cy="88" r="9" fill="#ec4899"/>
-            <circle cx="235" cy="88" r="9" fill="#8b5cf6"/>
-            <circle class="oeil" cx="160" cy="178" r="15" fill="#8b5cf6"/>
-            <circle class="oeil" cx="220" cy="178" r="15" fill="#ec4899"/>
-            <path d="M155 218 C 168 235, 212 235, 225 218 C 225 240, 205 252, 190 252 C 175 252, 155 240, 155 218 Z" fill="#ec4899"/>
-            <rect x="100" y="185" width="16" height="36" rx="8" fill="#ffffff" opacity="0.85"/>
-            <rect x="264" y="185" width="16" height="36" rx="8" fill="#ffffff" opacity="0.85"/>
-        </svg>
+const T = window.MALOVE.textes;
 
-        <h1 class="login-titre">Malove<span class="point">.</span>ai</h1>
-        <p class="login-tagline">{{ t.tagline }}</p>
-        <p class="login-intro">{{ t.login_intro }}</p>
+const zoneMessages   = document.getElementById('messages');
+const formulaire     = document.getElementById('formulaire');
+const champMessage   = document.getElementById('champ-message');
+const boutonEnvoi    = document.getElementById('bouton-envoi');
+const compteur       = document.getElementById('compteur');
+const affichageRestants = document.getElementById('restants');
 
-        {% if banni %}
-        <p class="login-banni">🚫 {{ t.banni }}</p>
-        {% endif %}
+let salonActuel = 'ia';
+let rafraichissement = null;
 
-        <a class="bouton-google" href="{{ url_for('connexion') }}">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/>
-            </svg>
-            {{ t.login_button }}
-        </a>
+function creerMessage({ texte, auteur, photo, moi, estIA, estErreur, estVip, email, uid }) {
+    const bloc = document.createElement('div');
+    bloc.className = 'message' + (moi ? ' moi' : '') + (estErreur ? ' erreur' : '');
 
-        <div class="login-langues">
-            <a href="{{ url_for('accueil', lang='fr') }}" class="{{ 'actif' if langue == 'fr' }}">Français</a>
-            <span aria-hidden="true">·</span>
-            <a href="{{ url_for('accueil', lang='en') }}" class="{{ 'actif' if langue == 'en' }}">English</a>
-        </div>
-    </main>
+    if (estIA) {
+        const avatar = document.createElement('div');
+        avatar.className = 'message-avatar ia';
+        avatar.textContent = '🤖';
+        bloc.appendChild(avatar);
+    } else if (photo) {
+        const avatar = document.createElement('img');
+        avatar.className = 'message-avatar';
+        avatar.src = photo;
+        avatar.alt = auteur || '';
+        avatar.referrerPolicy = 'no-referrer';
+        bloc.appendChild(avatar);
+    }
 
-</body>
-</html>
+    const corps = document.createElement('div');
+    corps.className = 'message-corps';
+
+    if (auteur && !moi) {
+        const ligneAuteur = document.createElement('div');
+        ligneAuteur.className = 'message-auteur' + (estVip ? ' vip' : '');
+        ligneAuteur.textContent = (estVip ? '⭐ ' : '') + auteur;
+        corps.appendChild(ligneAuteur);
+    }
+
+    const contenu = document.createElement('div');
+    contenu.className = 'message-texte';
+    contenu.textContent = texte;
+    corps.appendChild(contenu);
+
+    bloc.appendChild(corps);
+
+    if (window.MALOVE.estAdmin && !moi && !estIA && email) {
+        const actions = document.createElement('div');
+        actions.className = 'message-admin-actions';
+
+        const boutonVip = document.createElement('button');
+        boutonVip.className = 'mini-bouton-admin';
+        boutonVip.textContent = '⭐';
+        boutonVip.title = 'VIP';
+        boutonVip.addEventListener('click', () => appelAdmin('/api/admin/vip', { email }, 'adminOkVip'));
+
+        const boutonBan = document.createElement('button');
+        boutonBan.className = 'mini-bouton-admin';
+        boutonBan.textContent = '🚫';
+        boutonBan.title = 'Ban';
+        boutonBan.addEventListener('click', () => appelAdmin('/api/admin/ban', { email }, 'adminOkBan'));
+
+        actions.appendChild(boutonVip);
+        actions.appendChild(boutonBan);
+        bloc.appendChild(actions);
+    }
+
+    return bloc;
+}
+
+function ajouterMessage(options) {
+    const vide = zoneMessages.querySelector('.vide');
+    if (vide) vide.remove();
+
+    zoneMessages.appendChild(creerMessage(options));
+    zoneMessages.scrollTop = zoneMessages.scrollHeight;
+}
+
+function afficherVide(texte) {
+    zoneMessages.innerHTML = '';
+    const bloc = document.createElement('p');
+    bloc.className = 'vide';
+    bloc.textContent = texte;
+    zoneMessages.appendChild(bloc);
+}
+
+function afficherIndicateur() {
+    const bloc = document.createElement('div');
+    bloc.className = 'message';
+    bloc.id = 'indicateur';
+    bloc.innerHTML =
+        '<div class="message-avatar ia">🤖</div>' +
+        '<div class="message-corps"><div class="ecrit"><span></span><span></span><span></span></div></div>';
+    zoneMessages.appendChild(bloc);
+    zoneMessages.scrollTop = zoneMessages.scrollHeight;
+}
+
+function retirerIndicateur() {
+    const bloc = document.getElementById('indicateur');
+    if (bloc) bloc.remove();
+}
+
+async function chargerHistorique(silencieux = false) {
+    try {
+        const reponse = await fetch(`/api/historique/${salonActuel}`);
+        const donnees = await reponse.json();
+
+        if (!donnees.messages || donnees.messages.length === 0) {
+            if (!silencieux) {
+                afficherVide(salonActuel === 'ia' ? T.videIa : T.videPublic);
+            }
+            return;
+        }
+
+        const signature = donnees.messages.length + '|' +
+            (donnees.messages[donnees.messages.length - 1].contenu || '');
+        if (silencieux && zoneMessages.dataset.signature === signature) return;
+        zoneMessages.dataset.signature = signature;
+
+        zoneMessages.innerHTML = '';
+        for (const message of donnees.messages) {
+            ajouterMessage({
+                texte:  message.contenu,
+                auteur: message.role === 'assistant' ? 'Malove AI' : message.nom,
+                photo:  message.photo,
+                moi:    message.moi && message.role !== 'assistant',
+                estIA:  message.role === 'assistant',
+                estVip: message.est_vip,
+                email:  message.email,
+                uid:    message.uid,
+            });
+        }
+    } catch (e) {
+        console.error('Chargement impossible', e);
+    }
+}
+
+formulaire.addEventListener('submit', async (evenement) => {
+    evenement.preventDefault();
+
+    const texte = champMessage.value.trim();
+    if (!texte) return;
+
+    champMessage.value = '';
+    boutonEnvoi.disabled = true;
+
+    if (salonActuel === 'ia') {
+        await envoyerAlIA(texte);
+    } else {
+        await envoyerAuSalon(texte);
+    }
+
+    boutonEnvoi.disabled = false;
+    champMessage.focus();
+});
+
+async function envoyerAlIA(texte) {
+    ajouterMessage({ texte, moi: true });
+    afficherIndicateur();
+
+    try {
+        const reponse = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: texte }),
+        });
+        const donnees = await reponse.json();
+        retirerIndicateur();
+
+        if (donnees.erreur) {
+            ajouterMessage({ texte: donnees.erreur, estIA: true, estErreur: true });
+        } else {
+            ajouterMessage({ texte: donnees.reponse, auteur: 'Malove AI', estIA: true });
+        }
+
+        if (typeof donnees.restants === 'number') {
+            affichageRestants.textContent = donnees.restants;
+        }
+    } catch (e) {
+        retirerIndicateur();
+        ajouterMessage({ texte: T.erreur, estIA: true, estErreur: true });
+    }
+}
+
+async function envoyerAuSalon(texte) {
+    try {
+        const reponse = await fetch('/api/public', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: texte }),
+        });
+        const donnees = await reponse.json();
+
+        if (donnees.erreur) {
+            ajouterMessage({ texte: donnees.erreur, estIA: true, estErreur: true });
+        } else {
+            await chargerHistorique();
+        }
+    } catch (e) {
+        ajouterMessage({ texte: T.erreur, estIA: true, estErreur: true });
+    }
+}
+
+document.querySelectorAll('.onglet').forEach((onglet) => {
+    onglet.addEventListener('click', () => {
+        document.querySelectorAll('.onglet').forEach((o) => {
+            o.classList.remove('actif');
+            o.setAttribute('aria-selected', 'false');
+        });
+        onglet.classList.add('actif');
+        onglet.setAttribute('aria-selected', 'true');
+
+        salonActuel = onglet.dataset.salon;
+        champMessage.placeholder = salonActuel === 'ia' ? T.placeholderIa : T.placeholderPublic;
+        compteur.classList.toggle('masque', salonActuel !== 'ia');
+
+        delete zoneMessages.dataset.signature;
+        zoneMessages.innerHTML = '';
+        chargerHistorique();
+        gererRafraichissement();
+    });
+});
+
+function gererRafraichissement() {
+    if (rafraichissement) clearInterval(rafraichissement);
+    if (salonActuel === 'public') {
+        rafraichissement = setInterval(() => chargerHistorique(true), 4000);
+    }
+}
+
+const panneau  = document.getElementById('reglages');
+const voile    = document.getElementById('voile');
+const palette  = document.getElementById('palette');
+const choixCouleur = document.getElementById('choix-couleur');
+const choixLangue  = document.getElementById('choix-langue');
+
+function ouvrirReglages() { panneau.hidden = false; voile.hidden = false; }
+function fermerReglages() { panneau.hidden = true;  voile.hidden = true; }
+
+document.getElementById('ouvrir-reglages').addEventListener('click', ouvrirReglages);
+voile.addEventListener('click', fermerReglages);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerReglages(); });
+
+async function enregistrerReglages(donnees) {
+    try {
+        await fetch('/api/reglages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(donnees),
+        });
+    } catch (e) {
+        console.error('Réglages non enregistrés', e);
+    }
+}
+
+function appliquerCouleur(couleur) {
+    document.documentElement.style.setProperty('--accent', couleur);
+    choixCouleur.value = couleur;
+    document.querySelectorAll('.pastille').forEach((p) => {
+        p.classList.toggle('actif', p.dataset.couleur.toLowerCase() === couleur.toLowerCase());
+    });
+}
+
+palette.addEventListener('click', (evenement) => {
+    const pastille = evenement.target.closest('.pastille');
+    if (!pastille) return;
+    appliquerCouleur(pastille.dataset.couleur);
+    enregistrerReglages({ couleur: pastille.dataset.couleur });
+});
+
+choixCouleur.addEventListener('change', () => {
+    appliquerCouleur(choixCouleur.value);
+    enregistrerReglages({ couleur: choixCouleur.value });
+});
+
+choixLangue.addEventListener('change', async () => {
+    await enregistrerReglages({ langue: choixLangue.value });
+    location.reload();
+});
+
+async function appelAdmin(url, corps, cleTexteSucces) {
+    try {
+        const reponse = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(corps),
+        });
+        const donnees = await reponse.json();
+        const messageEl = document.getElementById('admin-message');
+
+        if (donnees.erreur) {
+            if (messageEl) { messageEl.textContent = donnees.erreur; messageEl.className = 'admin-message erreur'; }
+        } else {
+            if (messageEl) { messageEl.textContent = T[cleTexteSucces] || 'OK'; messageEl.className = 'admin-message ok'; }
+            delete zoneMessages.dataset.signature;
+            chargerHistorique();
+        }
+    } catch (e) {
+        console.error('Action admin échouée', e);
+    }
+}
+
+const boutonAdminVip = document.getElementById('admin-bouton-vip');
+const boutonAdminBan = document.getElementById('admin-bouton-ban');
+const champAdminEmail = document.getElementById('admin-email');
+
+if (boutonAdminVip) {
+    boutonAdminVip.addEventListener('click', () => {
+        const email = champAdminEmail.value.trim();
+        if (email) appelAdmin('/api/admin/vip', { email }, 'adminOkVip');
+    });
+}
+
+if (boutonAdminBan) {
+    boutonAdminBan.addEventListener('click', () => {
+        const email = champAdminEmail.value.trim();
+        if (email) appelAdmin('/api/admin/ban', { email }, 'adminOkBan');
+    });
+}
+
+appliquerCouleur(choixCouleur.value);
+chargerHistorique();
+champMessage.focus();
