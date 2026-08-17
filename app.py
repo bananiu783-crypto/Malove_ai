@@ -51,10 +51,15 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 
 BASE_DE_DONNEES = "malove.db"
 
+# Seule cette adresse peut gérer les VIP et les bannissements
+ADMIN_EMAIL = "ximopro85@gmail.com"
+
 # Limites (anti-abus)
-LIMITE_IA_PAR_HEURE = 20        # messages à l'IA par personne et par heure
+LIMITE_IA_PAR_HEURE = 20        # messages à l'IA par personne normale, par heure
+LIMITE_VIP_PAR_3H = 50          # messages à l'IA par personne VIP, sur une fenêtre de 3h
 LIMITE_CHAT_PAR_MINUTE = 10     # messages dans le salon public par minute
 LONGUEUR_MAX_MESSAGE = 2000     # caractères
+DUREE_BAN_HEURES = 3            # un bannissement se lève tout seul après ce délai
 
 client_ia = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
@@ -101,6 +106,14 @@ TRADUCTIONS = {
         "too_long": "Message trop long.",
         "error": "Une erreur est survenue. Réessaie.",
         "quota": "Le quota IA du jour est épuisé. Réessaie demain.",
+        "banni": "Tu as été banni temporairement. Réessaie plus tard.",
+        "admin_titre": "Administration",
+        "admin_email_placeholder": "Email de la personne",
+        "admin_vip_bouton": "Basculer VIP",
+        "admin_ban_bouton": "Bannir (3h)",
+        "admin_ok_vip": "Statut VIP mis à jour.",
+        "admin_ok_ban": "Personne bannie pour 3h.",
+        "admin_erreur": "Utilisateur introuvable.",
     },
     "en": {
         "tagline": "Your AI assistant, all in one place",
@@ -123,6 +136,14 @@ TRADUCTIONS = {
         "too_long": "Message too long.",
         "error": "Something went wrong. Try again.",
         "quota": "Today's AI quota is used up. Try again tomorrow.",
+        "banni": "You have been temporarily banned. Try again later.",
+        "admin_titre": "Admin",
+        "admin_email_placeholder": "Person's email",
+        "admin_vip_bouton": "Toggle VIP",
+        "admin_ban_bouton": "Ban (3h)",
+        "admin_ok_vip": "VIP status updated.",
+        "admin_ok_ban": "User banned for 3h.",
+        "admin_erreur": "User not found.",
     },
 }
 
@@ -157,6 +178,8 @@ def init_db():
             photo         TEXT,
             couleur       TEXT DEFAULT '#8b5cf6',
             langue        TEXT DEFAULT 'fr',
+            est_vip       INTEGER DEFAULT 0,
+            banni_jusqua  TEXT,
             cree_le       TEXT DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -173,6 +196,15 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_messages_salon ON messages(salon, cree_le);
         CREATE INDEX IF NOT EXISTS idx_messages_user  ON messages(utilisateur_id, cree_le);
     """)
+
+    # Migration : si la base existait déjà avant l'ajout du système VIP/ban,
+    # ces colonnes n'y sont pas encore -> on les ajoute sans rien casser.
+    for colonne, definition in [("est_vip", "INTEGER DEFAULT 0"), ("banni_jusqua", "TEXT")]:
+        try:
+            db.execute(f"ALTER TABLE utilisateurs ADD COLUMN {colonne} {definition}")
+        except sqlite3.OperationalError:
+            pass  # La colonne existe déjà, rien à faire
+
     db.commit()
     db.close()
 
@@ -180,12 +212,48 @@ def init_db():
 # ---------------------------------------------------------------------------
 # OUTILS
 # ---------------------------------------------------------------------------
+def est_admin(utilisateur):
+    """Vrai seulement pour le compte administrateur unique."""
+    return utilisateur is not None and utilisateur["email"] == ADMIN_EMAIL
+
+
+def est_banni(utilisateur):
+    """Vrai si la personne est actuellement bannie (le ban expire tout seul après 3h)."""
+    if utilisateur is None or utilisateur["banni_jusqua"] is None:
+        return False
+    return datetime.utcnow() < datetime.strptime(utilisateur["banni_jusqua"], "%Y-%m-%d %H:%M:%S")
+
+
+def limite_et_fenetre(utilisateur):
+    """Renvoie (nombre de messages autorisés, fenêtre en minutes) selon le statut VIP."""
+    if utilisateur["est_vip"]:
+        return LIMITE_VIP_PAR_3H, 180
+    return LIMITE_IA_PAR_HEURE, 60
+
+
 def connexion_requise(f):
-    """Empêche l'accès à une page si la personne n'est pas connectée."""
+    """Empêche l'accès à une page si la personne n'est pas connectée, ou si elle est bannie."""
     @wraps(f)
     def decoree(*args, **kwargs):
         if "utilisateur_id" not in session:
             return redirect(url_for("accueil"))
+        utilisateur = utilisateur_actuel()
+        if utilisateur is None:
+            session.clear()
+            return redirect(url_for("accueil"))
+        if est_banni(utilisateur):
+            session.clear()
+            return redirect(url_for("accueil", banni="1"))
+        return f(*args, **kwargs)
+    return decoree
+
+
+def admin_requis(f):
+    """Bloque l'accès si la personne connectée n'est pas l'administrateur."""
+    @wraps(f)
+    def decoree(*args, **kwargs):
+        if not est_admin(utilisateur_actuel()):
+            return jsonify({"erreur": "Accès refusé."}), 403
         return f(*args, **kwargs)
     return decoree
 
@@ -226,7 +294,8 @@ def accueil():
     if "utilisateur_id" in session:
         return redirect(url_for("chat"))
     langue = request.args.get("lang", "fr")
-    return render_template("login.html", t=textes(langue), langue=langue)
+    banni = request.args.get("banni") == "1"
+    return render_template("login.html", t=textes(langue), langue=langue, banni=banni)
 
 
 @app.route("/connexion")
@@ -261,6 +330,8 @@ def retour_google():
         db.commit()
         session["utilisateur_id"] = curseur.lastrowid
     else:
+        if est_banni(existant):
+            return redirect(url_for("accueil", banni="1"))
         session["utilisateur_id"] = existant["id"]
 
     return redirect(url_for("chat"))
@@ -281,13 +352,15 @@ def chat():
         session.clear()
         return redirect(url_for("accueil"))
 
-    utilises = compter_messages_recents(utilisateur["id"], "ia", 60)
+    limite, fenetre = limite_et_fenetre(utilisateur)
+    utilises = compter_messages_recents(utilisateur["id"], "ia", fenetre)
     return render_template(
         "chat.html",
         utilisateur=utilisateur,
         t=textes(utilisateur["langue"]),
-        restants=max(0, LIMITE_IA_PAR_HEURE - utilises),
-        limite_totale=LIMITE_IA_PAR_HEURE,
+        restants=max(0, limite - utilises),
+        limite_totale=limite,
+        est_admin=est_admin(utilisateur),
     )
 
 
@@ -320,17 +393,20 @@ def api_historique(salon):
     if salon not in ("ia", "public"):
         return jsonify({"erreur": "salon inconnu"}), 400
 
+    utilisateur = utilisateur_actuel()
+    admin = est_admin(utilisateur)
+
     db = get_db()
     if salon == "public":
         lignes = db.execute(
-            """SELECT m.contenu, m.cree_le, m.role, u.nom, u.photo, u.couleur, u.id AS uid
+            """SELECT m.contenu, m.cree_le, m.role, u.nom, u.photo, u.couleur, u.id AS uid, u.est_vip, u.email
                FROM messages m JOIN utilisateurs u ON u.id = m.utilisateur_id
                WHERE m.salon = 'public'
                ORDER BY m.id DESC LIMIT 100"""
         ).fetchall()
     else:
         lignes = db.execute(
-            """SELECT m.contenu, m.cree_le, m.role, u.nom, u.photo, u.couleur, u.id AS uid
+            """SELECT m.contenu, m.cree_le, m.role, u.nom, u.photo, u.couleur, u.id AS uid, u.est_vip, u.email
                FROM messages m JOIN utilisateurs u ON u.id = m.utilisateur_id
                WHERE m.salon = 'ia' AND m.utilisateur_id = ?
                ORDER BY m.id DESC LIMIT 100""",
@@ -340,7 +416,10 @@ def api_historique(salon):
     messages = [dict(ligne) for ligne in reversed(lignes)]
     for message in messages:
         message["moi"] = (message["uid"] == session["utilisateur_id"])
-    return jsonify({"messages": messages})
+        message["est_vip"] = bool(message["est_vip"])
+        if not admin:
+            message.pop("email", None)  # l'email n'est visible que par l'admin
+    return jsonify({"messages": messages, "est_admin": admin})
 
 
 @app.route("/api/public", methods=["POST"])
@@ -389,8 +468,9 @@ def api_chat():
     if len(contenu) > LONGUEUR_MAX_MESSAGE:
         return jsonify({"erreur": t["too_long"]}), 400
 
-    utilises = compter_messages_recents(utilisateur["id"], "ia", 60)
-    if utilises >= LIMITE_IA_PAR_HEURE:
+    limite, fenetre = limite_et_fenetre(utilisateur)
+    utilises = compter_messages_recents(utilisateur["id"], "ia", fenetre)
+    if utilises >= limite:
         return jsonify({"erreur": t["limit_reached"], "restants": 0}), 429
 
     db = get_db()
@@ -431,8 +511,61 @@ def api_chat():
 
     return jsonify({
         "reponse": texte_reponse,
-        "restants": max(0, LIMITE_IA_PAR_HEURE - utilises - 1),
+        "restants": max(0, limite - utilises - 1),
     })
+
+
+# ---------------------------------------------------------------------------
+# ADMINISTRATION (réservé à ADMIN_EMAIL)
+# ---------------------------------------------------------------------------
+def _trouver_utilisateur_cible(db, donnees):
+    """Trouve l'utilisateur ciblé par email ou par user_id (les deux méthodes possibles)."""
+    user_id = donnees.get("user_id")
+    email = donnees.get("email")
+    if user_id:
+        return db.execute("SELECT * FROM utilisateurs WHERE id = ?", (user_id,)).fetchone()
+    if email:
+        return db.execute("SELECT * FROM utilisateurs WHERE email = ?", (email.strip(),)).fetchone()
+    return None
+
+
+@app.route("/api/admin/vip", methods=["POST"])
+@connexion_requise
+@admin_requis
+def api_admin_vip():
+    """Bascule le statut VIP d'une personne (recherche par email OU en cliquant dans le chat)."""
+    donnees = request.get_json(silent=True) or {}
+    db = get_db()
+    cible = _trouver_utilisateur_cible(db, donnees)
+
+    if cible is None:
+        return jsonify({"erreur": "Utilisateur introuvable."}), 404
+
+    nouveau_statut = 0 if cible["est_vip"] else 1
+    db.execute("UPDATE utilisateurs SET est_vip = ? WHERE id = ?", (nouveau_statut, cible["id"]))
+    db.commit()
+    return jsonify({"ok": True, "est_vip": bool(nouveau_statut), "nom": cible["nom"]})
+
+
+@app.route("/api/admin/ban", methods=["POST"])
+@connexion_requise
+@admin_requis
+def api_admin_ban():
+    """Bannit une personne pour 3h (recherche par email OU en cliquant dans le chat). Se lève tout seul."""
+    donnees = request.get_json(silent=True) or {}
+    db = get_db()
+    cible = _trouver_utilisateur_cible(db, donnees)
+
+    if cible is None:
+        return jsonify({"erreur": "Utilisateur introuvable."}), 404
+
+    if cible["email"] == ADMIN_EMAIL:
+        return jsonify({"erreur": "Impossible de se bannir soi-même."}), 400
+
+    jusqua = (datetime.utcnow() + timedelta(hours=DUREE_BAN_HEURES)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE utilisateurs SET banni_jusqua = ? WHERE id = ?", (jusqua, cible["id"]))
+    db.commit()
+    return jsonify({"ok": True, "nom": cible["nom"]})
 
 
 # On crée la base de données ici (pas seulement dans le bloc __main__ plus bas),
