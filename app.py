@@ -428,6 +428,12 @@ def api_chat():
     })
 
 
+# On crée la base de données ici (pas seulement dans le bloc __main__ plus bas),
+# car gunicorn (utilisé en production sur Render) importe ce fichier sans jamais
+# exécuter "if __name__ == '__main__'" — sans cette ligne, la base ne serait
+# jamais créée et le site plante.
+init_db()
+
+
 if __name__ == "__main__":
-    init_db()
     app.run(host="0.0.0.0", port=5000, debug=False)
