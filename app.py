@@ -25,6 +25,7 @@ from flask import (
     Flask, render_template, request, redirect,
     url_for, session, jsonify, g
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from authlib.integrations.flask_client import OAuth
 from groq import Groq
 from dotenv import load_dotenv
@@ -34,6 +35,12 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "change-moi-en-production")
+
+# Render (et la plupart des hébergeurs) placent le site derrière un proxy HTTPS.
+# Sans cette ligne, Flask croit que les requêtes arrivent en HTTP (pas HTTPS),
+# ce qui fait échouer silencieusement la connexion Google (redirect_uri généré
+# en http:// au lieu de https://, rejeté par Google) et ramène à la page de connexion.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION
